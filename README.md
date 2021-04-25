@@ -12,3 +12,4 @@ It's doomed to be slow cause I'm a freaking freerider, whatever, [click here](ht
 
 ## Optimize method - Adam with regulization
 ![optimize method](/images/optimize_method.png)
+![optimize params](/images/optimize_parameter.png)
