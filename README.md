@@ -1,6 +1,7 @@
 # R-shinyapp-LongTermCares
 
-## This side-project is prepared for 
+## Why Long-Term Cares
+This side project is prepared for 
 [2021資料創新應用競賽](https://opendata-contest.tca.org.tw)
 
 ## Demo
