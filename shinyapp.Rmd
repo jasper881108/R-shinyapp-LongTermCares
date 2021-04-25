@@ -1,0 +1,186 @@
+---
+title: "長照資源優化系統"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+    css: shinyapp_bright.css
+runtime: shiny
+resource_files:
+- 三民區.rdata
+- 前金區.rdata
+- 苓雅區.rdata
+- 新興區.rdata
+- 鹽埕區.rdata
+---
+
+```{r setup, include=FALSE}
+library(showtext)
+par(family='STKaiti')
+showtext_auto(enable = TRUE)
+library(dplyr)
+library(sf)
+library(tmap)
+library(units)
+library(shiny)
+library(flexdashboard)
+library(plotly)
+
+```
+
+```{r global,echo = FALSE}
+load("KA.rdata")
+utility_nograd = function(town,alpha,lambda,beta){
+  uk = function(r) pmin(
+    cells$n, lambda*((d/100)^(-alpha) %*% r)^beta)
+  U = function(r) -sum(uk(r))
+  cells = subset(K, TOWN==town)
+  facilities = KA[st_contains(st_union(cells),KA)[[1]],]
+  r0 = rep(10,nrow(facilities))
+  R = sum(r0); nf=length(r0)
+        
+  d = st_distance(cells, facilities) %>% 
+          drop_units() %>% pmax(100)#; head(d)
+        
+  ui = rbind(diag(nf), rep(-1, nf))#; ui
+  ci = c(rep(0, nf), -R); #ci
+
+  opt = constrOptim(r0*0.9, U, NULL, ui=ui, ci=ci)
+  facilities$resource = opt$par %>% round(1)             # 5.0 16.2  8.8
+  -c(U(r0), opt$value) %>% round   # 3222 3315
+  cells$before = uk(r0)  
+  cells$after = uk(opt$par)
+  cells$delta = cells$after- cells$before 
+
+  return(list(cells[,c('U_ID','delta','before','after')],facilities[,c('特約服務項目','O_ABC','resource')]))
+}
+
+utility_adam = function(town,alpha,lambda,beta){
+  cells = subset(K, TOWN==town)
+  facilities = KA[st_contains(st_union(cells),KA)[[1]],]
+  r = rep(10,nrow(facilities))
+  idx = cells$n != 0
+  d = (st_distance(cells, facilities) %>% 
+  drop_units() %>% pmax(100))[idx,]
+  utilityb = lambda*((d/100)^(-alpha) %*% r)^beta/(cells$n[idx])
+  sum_utilityb = sum(utilityb)
+  config=list('t'=0,'m'=rep(0,length(r)),'v'=rep(0,length(r)),'beta1'=0.99,'beta2'=0.999,'epsilon'=1e-08,'lr'=10,'reg'=sum_utilityb)
+
+
+  for (i in 1:2000){
+  dr = rowSums(-lambda * beta * t((d/100)^(-alpha*beta)) * (r^(beta-1))/(cells$n[idx])) +  config[['reg']]*((r - 10)/(abs(r - 10)+2e-12))
+  config[['t']] = config[['t']]+1
+  config[['m']] = config[['beta1']]*config[['m']] + (1-config[['beta1']])*dr
+  config[['v']] = config[['beta2']]*config[['v']] + (1-config[['beta2']])*dr*dr
+  m_bias      = config[['m']]/(1-config[['beta1']]**config[['t']]) 
+  v_bias      = config[['v']]/(1-config[['beta2']]**config[['t']])
+  r      = r  -  config[['lr']]*m_bias/(sqrt(v_bias)+ config[['epsilon']])
+  }
+  #loss
+  r = r-min(r)+abs(max(r))
+  r = r/sum(r)*10*length(r)
+  utilitya = (lambda*((d/100)^(-alpha) %*% r)^beta)/(cells$n[idx])
+  
+  facilities$resource = r %>% round(1) 
+  cells$before = 0;cells$after = 0
+  cells$before[idx] = as.vector(utilityb)
+  cells$after[idx]  = as.vector(utilitya) 
+  cells$delta  = cells$after - cells$before 
+  return(list(cells[,c('U_ID','delta','before','after')],facilities[,c('特約服務項目','O_ABC','resource')]))
+}
+
+
+```
+
+長照資源分配模擬
+=====================================================
+<div class ='container'>
+<div class = 'input-layer'>
+```{r echo=FALSE}
+town_choose = unique(K$TOWN)
+model_choose = c('M1','Adam')
+selectInput('model','選擇優化方法',choices =model_choose,selected = model_choose[1])
+selectInput('town',label='選擇區域',choices = town_choose,selected = town_choose[5])
+sliderInput('alpha','距離影響',min=0,max=4,value=3,step = 0.5)
+sliderInput('beta','邊際效果',min=0,max=4,value=0.5,step = 0.5)
+sliderInput('lambda','權重',min=0,max=100,value=20,step = 10)
+```
+</div>
+
+<div class = 'plot'>
+```{r echo=FALSE}
+renderTmap({
+  data_l = readRDS(paste0(input$town,'.rdata'))
+  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
+  if (is.null(data)){
+    if (input$model == 'M1'){
+    data = utility_nograd(input$town,input$alpha,input$lambda,input$beta)
+    }else if(input$model == 'Adam'){
+    data = utility_adam(input$town,input$alpha,input$lambda,input$beta)
+    }
+    data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]] = data
+    saveRDS(data_l,paste0(input$town,'.rdata'))
+  }
+# data = utility_nograd('鹽埕區',2,30,0.5)
+  cells = data[[1]]
+  facilities = data[[2]]
+  tm_shape(cells)+tm_polygons('delta',alpha = 0.5)+tm_shape(facilities)+tm_dots('O_ABC',size=0.1)
+})
+##saveRDS(list(),'鹽埕區.rdata')
+```
+</div>
+<div class ='math_plot'>
+```{r echo=FALSE}
+renderPlotly({
+  d = d=seq(100,600,10)
+  df = data.frame(距離 = d,效用=input$lambda*((d/100)^(-input$alpha) * 10)^input$beta)
+ ggplotly(ggplot(df,aes(距離,效用))+geom_line()+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15)))
+})
+```
+</div>
+</div>
+
+分配結果統計
+=====================================================
+
+<div class ='container'>
+<div class = 'barplot-resource'>
+```{r echo=FALSE}
+renderPlotly({
+  data_l = readRDS(paste0(input$town,'.rdata'))
+  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
+  resource = data[[2]]$resource
+  facilities = data[[2]]$特約服務項目
+  df = data.frame(服務 = facilities ,資源 = resource)
+ ggplotly(df%>%group_by(服務)%>%summarise(資源=sum(資源))%>%ggplot(aes(服務,資源,fill=服務))+geom_bar(stat='identity')+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15)))
+})
+```
+</div>
+
+<div class = 'barplot-before-after'>
+```{r echo=FALSE}
+renderPlotly({
+  data_l = readRDS(paste0(input$town,'.rdata'))
+  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
+  before = sum(data[[1]]$before)
+  after  = sum(data[[1]]$after)
+  df = data.frame(調整 = c('調整後','調整前') ,效益 = c(after,before))
+ ggplotly(df%>%ggplot(aes(調整,效益,fill=調整))+geom_bar(stat='identity')+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15)))
+})
+```
+</div>
+<div class = 'text'>
+```{r echo=FALSE}
+renderPrint({
+  
+})
+```
+</div>
+
+</div>
+
+
+
+
+
