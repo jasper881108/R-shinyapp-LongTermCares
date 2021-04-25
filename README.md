@@ -4,7 +4,7 @@
 This side project is prepared for 
 [2021資料創新應用競賽](https://opendata-contest.tca.org.tw)
 
-## Product showout
+## Product demo
 ![Product](https://user-images.githubusercontent.com/67900956/115987830-52cc0f00-a5e9-11eb-886d-14ccb38eb860.mp4)
 
 ## Try it yourself
