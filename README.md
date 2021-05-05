@@ -2,6 +2,7 @@
 
 
 # R-shinyapp-LongTermCares
+### We want to know how local Lonterm Cares sites contribute to every minimal-dministrative-area. By computing some hypothesis function which considering factor like distance, diminishing marginal utility and so on. We can optimize the function and find which site should keep eye on.
 
 <br>
 <br>
