@@ -14,11 +14,17 @@ resource_files:
 - 新興區.rdata
 - 鹽埕區.rdata
 ---
+<script type="text/javascript">
+  function trigger_css(){
+    document.getElementById('show-input-mobile').className ='input-layer';
+  }
+</script>
 
 ```{r setup, include=FALSE}
 library(showtext)
 par(family='STKaiti')
 showtext_auto(enable = TRUE)
+library(ggplot2)
 library(dplyr)
 library(sf)
 library(tmap)
@@ -26,69 +32,147 @@ library(units)
 library(shiny)
 library(flexdashboard)
 library(plotly)
-
+library(stringr)
+library(nloptr)
 ```
 
 ```{r global,echo = FALSE}
 load("KA.rdata")
 utility_nograd = function(town,alpha,lambda,beta){
-  uk = function(r) pmin(
-    cells$n, lambda*((d/100)^(-alpha) %*% r)^beta)
-  U = function(r) -sum(uk(r))
+  #town  ='鹽埕區'
   cells = subset(K, TOWN==town)
-  facilities = KA[st_contains(st_union(cells),KA)[[1]],]
-  r0 = rep(10,nrow(facilities))
-  R = sum(r0); nf=length(r0)
-        
-  d = st_distance(cells, facilities) %>% 
-          drop_units() %>% pmax(100)#; head(d)
-        
-  ui = rbind(diag(nf), rep(-1, nf))#; ui
-  ci = c(rep(0, nf), -R); #ci
+  sites = subset(KA, str_detect(`地址全址`, town))
 
-  opt = constrOptim(r0*0.9, U, NULL, ui=ui, ci=ci)
-  facilities$resource = opt$par %>% round(1)             # 5.0 16.2  8.8
-  -c(U(r0), opt$value) %>% round   # 3222 3315
-  cells$before = uk(r0)  
-  cells$after = uk(opt$par)
-  cells$delta = cells$after- cells$before 
-
-  return(list(cells[,c('U_ID','delta','before','after')],facilities[,c('特約服務項目','O_ABC','resource')]))
-}
-
-utility_adam = function(town,alpha,lambda,beta){
-  cells = subset(K, TOWN==town)
-  facilities = KA[st_contains(st_union(cells),KA)[[1]],]
-  r = rep(10,nrow(facilities))
-  idx = cells$n != 0
-  d = (st_distance(cells, facilities) %>% 
-  drop_units() %>% pmax(100))[idx,]
-  utilityb = lambda*((d/100)^(-alpha) %*% r)^beta/(cells$n[idx])
-  sum_utilityb = sum(utilityb)
-  config=list('t'=0,'m'=rep(0,length(r)),'v'=rep(0,length(r)),'beta1'=0.99,'beta2'=0.999,'epsilon'=1e-08,'lr'=10,'reg'=sum_utilityb)
-
-
-  for (i in 1:2000){
-  dr = rowSums(-lambda * beta * t((d/100)^(-alpha*beta)) * (r^(beta-1))/(cells$n[idx])) +  config[['reg']]*((r - 10)/(abs(r - 10)+2e-12))
-  config[['t']] = config[['t']]+1
-  config[['m']] = config[['beta1']]*config[['m']] + (1-config[['beta1']])*dr
-  config[['v']] = config[['beta2']]*config[['v']] + (1-config[['beta2']])*dr*dr
-  m_bias      = config[['m']]/(1-config[['beta1']]**config[['t']]) 
-  v_bias      = config[['v']]/(1-config[['beta2']]**config[['t']])
-  r      = r  -  config[['lr']]*m_bias/(sqrt(v_bias)+ config[['epsilon']])
-  }
-  #loss
-  r = r-min(r)+abs(max(r))
-  r = r/sum(r)*10*length(r)
-  utilitya = (lambda*((d/100)^(-alpha) %*% r)^beta)/(cells$n[idx])
+  i = sapply(st_contains(cells, sites), `[`, 1) %>% {.[!is.na(.)]}
+  sites=sites[i,]
   
-  facilities$resource = r %>% round(1) 
-  cells$before = 0;cells$after = 0
-  cells$before[idx] = as.vector(utilityb)
-  cells$after[idx]  = as.vector(utilitya) 
-  cells$delta  = cells$after - cells$before 
-  return(list(cells[,c('U_ID','delta','before','after')],facilities[,c('特約服務項目','O_ABC','resource')]))
+  S = nrow(sites)
+  r0 = rep(10,S) 
+  R = sum(r0) 
+  ui = rbind(diag(S), rep(-1, S)) 
+  ci = c(rep(0, S), -R) 
+  d = st_distance(cells, sites) %>% 
+    drop_units() %>% pmax(100)
+  vk = function(x) lambda * ( (d/100)^-alpha %*% x  )^beta
+  cells$rho =  1 + ntile(cells$n,100)/100 
+  uk = function(x) cells$rho * pmin(cells$n, vk(x))
+  U = function(x) -sum(uk(x))
+  eval_g_ineq = function(x) {return(sum(x) - sum(r0))}
+  opts = list("algorithm"="NLOPT_LN_COBYLA",
+            "xtol_rel"=1.0e-1,"maxeval"= 600)
+  res <- nloptr( 
+  x0 = r0 * 0.5, eval_f = U,
+  lb = rep(0, length(r0)), ub = rep(100, length(r0)),
+  eval_g_ineq = eval_g_ineq, opts=opts
+  )
+  r1 = res$solution
+  cells = cells %>% mutate(
+    uk0 = as.numeric(uk(r0)), uk1 = as.numeric(uk(r1)),
+    nk = n)
+  cells$before = ifelse(cells$uk0 == 0,0,1) *100
+  cells$after = ifelse(cells$uk1 == 0,0,cells$uk1/cells$uk0)*100
+  cells$delta = cells$after-cells$before
+  cells$`人口` = cells$n
+  sites = sites %>% mutate(r0 = r0, resource = r1)
+  return(list(cells[,c('U_ID','delta','before','after','人口')],sites[,c('特約服務項目','O_ABC','resource')]))
 }
+utility_logistic= function(town,alpha,lambda,beta,omega){
+  cells = subset(K, TOWN==town)
+  sites = subset(KA, str_detect(`地址全址`, town))
+
+  i = sapply(st_contains(cells, sites), `[`, 1) %>% {.[!is.na(.)]}
+  sites=sites[i,]
+  
+  S = nrow(sites)
+  r0 = rep(10,S) 
+  R = sum(r0) 
+  ui = rbind(diag(S), rep(-1, S)) 
+  ci = c(rep(0, S), -R) 
+  d = st_distance(cells, sites) %>% 
+    drop_units() %>% pmax(100)
+  cells$rho =  1 + ntile(cells$n,100)/100 
+  uk = function(r) {
+  vk = lambda*((d/1000)^(-alpha) %*% r)^beta
+  wk = omega * cells$n / 2
+  cells$rho * cells$n * plogis(5 * (vk - wk) / wk)
+  } 
+  U = function(r) -sum(uk(r))
+  opts = list("algorithm"="NLOPT_LN_COBYLA",
+            "xtol_rel"=1.0e-1,"maxeval"= 600)
+  eval_g_ineq = function(x) {return(sum(x) - sum(r0))}
+  res <- nloptr( 
+  x0 = r0 * 0.5, eval_f = U,
+  lb = rep(0, length(r0)), ub = rep(100, length(r0)),
+  eval_g_ineq = eval_g_ineq, opts=opts)
+  r1 = res$solution
+  cells = cells %>% mutate(
+  uk0 = as.numeric(uk(r0)), uk1 = as.numeric(uk(r1)),
+    nk = n)
+  cells$before = ifelse(cells$uk0 == 0,0,1) *100
+  cells$after = ifelse(cells$uk1 == 0,0,cells$uk1/cells$uk0)*100
+  cells$delta = cells$after-cells$before
+  cells$`人口` = cells$n
+  sites = sites %>% mutate(r0 = r0, resource = r1)
+  return(list(cells[,c('U_ID','delta','before','after','人口')],sites[,c('特約服務項目','O_ABC','resource')]))
+}
+#utility_adam = function(town,alpha,lambda,beta){
+#  cells = subset(K, TOWN==town)
+#  facilities = KA[st_contains(st_union(cells),KA)[[1]],]
+#  r = rep(10,nrow(facilities))
+#  idx = cells$n != 0
+#  d = (st_distance(cells, facilities) %>% 
+#  drop_units() %>% pmax(100))[idx,]
+  
+#  utilityb = lambda*((d/100)^(-alpha) %*% r)^beta
+#  sum_utilityb = sum(utilityb)
+#  config=list('t'=0,'m'=rep(0,length(r)),'v'=rep(0,length(r)),'m_l'=0,'v_l'=0,'m_b'=0,'v_b'=0,'m_a'=0,'v_a'=0,'beta1'=0.99,'beta2'=0.999,'epsilon'=1e-08,'lr_r'=10,'lr_l'=1e-2,'lr_b' = 1e-3,'lr_a' = 1e-4, 'reg'=1e+05)
+
+#for (i in 1:3000){
+#  matrix = ((d/100)^(-alpha)) %*% r
+  ###### r
+#  dr = rowSums(-lambda * beta * t((d/100)^(-alpha*beta)) * (r^(beta-1))) +  config[['reg']]*((r - 10)/(abs(r - 10)+2e-12))
+#  config[['t']] = config[['t']]+1
+#  config[['m']] = config[['beta1']]*config[['m']] + (1-config[['beta1']])*dr
+#  config[['v']] = config[['beta2']]*config[['v']] + (1-config[['beta2']])*dr*dr
+#  m_bias      = config[['m']]/(1-config[['beta1']]**config[['t']]) 
+#  v_bias      = config[['v']]/(1-config[['beta2']]**config[['t']])
+#  r      = r  -  config[['lr_r']]*m_bias/(sqrt(v_bias)+ config[['epsilon']])
+  
+  ###### lambda
+  #dlambda = sum(-1*matrix^beta/cells$n[idx])
+  #config[['m_l']] = config[['beta1']]*config[['m_l']] + (1-config[['beta1']])*dlambda
+  #config[['v_l']] = config[['beta2']]*config[['v_l']] + (1-config[['beta2']])*dlambda*dlambda
+  #m_bias_l      = config[['m_l']]/(1-config[['beta1']]**config[['t']]) 
+  #v_bias_l      = config[['v_l']]/(1-config[['beta2']]**config[['t']])
+  #lambda = lambda - config[['lr_l']]*m_bias_l/(sqrt(v_bias_l)+ config[['epsilon']])
+ 
+  ###### beta
+  #dbeta   = sum(-lambda * log(matrix) * (matrix^beta)/(cells$n[idx]))
+ # config[['m_b']] = config[['beta1']]*config[['m_b']] + (1-config[['beta1']])*dbeta
+  #config[['v_b']] = config[['beta2']]*config[['v_b']] + (1-config[['beta2']])*dbeta*dbeta
+  #m_bias_b      = config[['m_b']]/(1-config[['beta1']]**config[['t']]) 
+  #v_bias_b      = config[['v_b']]/(1-config[['beta2']]**config[['t']])
+  #beta = beta - config[['lr_b']]*m_bias_b/(sqrt(v_bias_b)+ config[['epsilon']])
+  
+  ###### alpha
+  #dalpha  = sum(lambda /(cells$n[idx]) * beta * ((d/100)^(-alpha) %*% r)^(beta-1) * (log(d/100) * (d/100)^(-alpha))%*%r)
+ # config[['m_a']] = config[['beta1']]*config[['m_a']] + (1-config[['beta1']])*dalpha
+ # config[['v_a']] = config[['beta2']]*config[['v_a']] + (1-config[['beta2']])*dalpha*dalpha
+ # m_bias_a     = config[['m_a']]/(1-config[['beta1']]**config[['t']]) 
+ # v_bias_a     = config[['v_a']]/(1-config[['beta2']]**config[['t']])
+ # alpha = alpha - config[['lr_a']]*m_bias_a/(sqrt(v_bias_a)+ config[['epsilon']])
+#}
+  #loss
+#  r = r/sum(r)*10*length(r) #r = r/sum(r)*50
+#  utilitya = (lambda*((d/100)^(-alpha) %*% r)^beta)
+  
+#  facilities$resource = r %>% round(1) 
+#  cells$before = 0;cells$after = 0
+#  cells$before[idx] = as.vector(utilityb) / as.vector(utilityb) *100
+#  cells$after[idx]  = as.vector(utilitya) /as.vector(utilityb)  *100
+#  cells$delta  = (cells$after - cells$before )
+#  return(list(cells[,c('U_ID','delta','before','after')],facilities[,c('特約服務項目','O_ABC','resource')]))
+#}
 
 
 ```
@@ -96,46 +180,68 @@ utility_adam = function(town,alpha,lambda,beta){
 長照資源分配模擬
 =====================================================
 <div class ='container'>
+<input name=">" type="button" onclick="trigger_css()" />
 <div class = 'input-layer'>
 ```{r echo=FALSE}
 town_choose = unique(K$TOWN)
-model_choose = c('M1','Adam')
-selectInput('model','選擇優化方法',choices =model_choose,selected = model_choose[1])
+func = c('指數型函數','羅吉斯函數')
+selectInput('func',label='選擇函數',choices =func ,selected =func[1] )
 selectInput('town',label='選擇區域',choices = town_choose,selected = town_choose[5])
-sliderInput('alpha','距離影響',min=0,max=4,value=3,step = 0.5)
-sliderInput('beta','邊際效果',min=0,max=4,value=0.5,step = 0.5)
-sliderInput('lambda','權重',min=0,max=100,value=20,step = 10)
+sliderInput('alpha','距離影響',min=0,max=4,value=2,step = 1)
+sliderInput('beta','邊際效果',min=0,max=1,value=0.5,step = 0.1)
+sliderInput('lambda','權重',min=0,max=50,value=10,step = 5)
+renderUI(if (input$func == '羅吉斯函數'){sliderInput('omega','omega',min=0,max=4,value=1,step = 0.5)})
+
 ```
 </div>
 
 <div class = 'plot'>
 ```{r echo=FALSE}
 renderTmap({
-  data_l = readRDS(paste0(input$town,'.rdata'))
-  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
-  if (is.null(data)){
-    if (input$model == 'M1'){
+    if (input$func == '指數型函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]]
+     if (is.null(data)){
     data = utility_nograd(input$town,input$alpha,input$lambda,input$beta)
-    }else if(input$model == 'Adam'){
-    data = utility_adam(input$town,input$alpha,input$lambda,input$beta)
-    }
-    data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]] = data
+    data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]] = data
     saveRDS(data_l,paste0(input$town,'.rdata'))
-  }
-# data = utility_nograd('鹽埕區',2,30,0.5)
+     }
+   }else if(input$func == '羅吉斯函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]]
+    if (is.null(data)){
+    data = utility_logistic(input$town,input$alpha,input$lambda,input$beta,input$omega)
+    data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]] = data
+    saveRDS(data_l,paste0(input$town,'.rdata'))
+    }
+   }
   cells = data[[1]]
   facilities = data[[2]]
-  tm_shape(cells)+tm_polygons('delta',alpha = 0.5)+tm_shape(facilities)+tm_dots('O_ABC',size=0.1)
+  tm_shape(cells)+tm_polygons('delta',alpha = 0.5,palette = "RdYlGn")+tm_shape(facilities)+tm_dots('O_ABC',size='resource')+tm_layout(asp=0)
 })
-##saveRDS(list(),'鹽埕區.rdata')
+
+##saveRDS(list(),'新興區.rdata')
 ```
 </div>
+
 <div class ='math_plot'>
 ```{r echo=FALSE}
 renderPlotly({
-  d = d=seq(100,600,10)
-  df = data.frame(距離 = d,效用=input$lambda*((d/100)^(-input$alpha) * 10)^input$beta)
- ggplotly(ggplot(df,aes(距離,效用))+geom_line()+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15)))
+  if (input$func == '指數型函數'){
+  d = seq(0.1,9,0.1)
+  df = data.frame(距離 = d,效用=input$lambda*((d*10)^(-input$alpha) * 10)^input$beta)
+ ggplotly(ggplot(df,aes(距離,效用))+geom_line(col='#fc2c03')+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15),plot.background = element_blank()))
+  }else if (input$func == '羅吉斯函數'){
+  n = 40
+  omg = input$omega
+  d = seq(0.1,9,0.1)
+  v = input$lambda*((d)^(-input$alpha) * 10)^input$beta
+  w=n*omg/2 
+  u = n*plogis(5*(v-w)/w)
+  df = data.frame(距離 = d,效用=u)
+  ggplotly(ggplot(df,aes(距離,效用))+theme(axis.title.y = element_text(angle=90,size = 15),axis.title.x = element_text(angle=0,size = 15))+geom_line(col='#fc2c03'))
+  }
+
 })
 ```
 </div>
@@ -146,23 +252,35 @@ renderPlotly({
 
 <div class ='container'>
 <div class = 'barplot-resource'>
+### 服務資源增減
 ```{r echo=FALSE}
 renderPlotly({
-  data_l = readRDS(paste0(input$town,'.rdata'))
-  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
+  if (input$func == '指數型函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]]
+   }else if(input$func == '羅吉斯函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]]
+   }
   resource = data[[2]]$resource
-  facilities = data[[2]]$特約服務項目
-  df = data.frame(服務 = facilities ,資源 = resource)
+  facilities = data[[2]]$特約服務項目 
+  df = data.frame(服務 = facilities ,資源 = resource-10)
  ggplotly(df%>%group_by(服務)%>%summarise(資源=sum(資源))%>%ggplot(aes(服務,資源,fill=服務))+geom_bar(stat='identity')+theme(axis.title.y = element_text(angle=0,size = 15),axis.title.x = element_text(angle=0,size = 15)))
 })
 ```
 </div>
 
 <div class = 'barplot-before-after'>
+### 調整前後效益比較
 ```{r echo=FALSE}
 renderPlotly({
-  data_l = readRDS(paste0(input$town,'.rdata'))
-  data = data_l[[paste0(input$model,',',input$alpha,',',input$lambda,',',input$beta)]]
+   if (input$func == '指數型函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]]
+   }else if(input$func == '羅吉斯函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]]
+   }
   before = sum(data[[1]]$before)
   after  = sum(data[[1]]$after)
   df = data.frame(調整 = c('調整後','調整前') ,效益 = c(after,before))
@@ -170,17 +288,38 @@ renderPlotly({
 })
 ```
 </div>
-<div class = 'text'>
+
+</div>
+
+探索分配原因
+=====================================================
+<div class = 'plot-analyst'>
+### 調整後資源和人口分布
 ```{r echo=FALSE}
-renderPrint({
-  
+renderTmap({
+    if (input$func == '指數型函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]]
+     if (is.null(data)){
+    data = utility_nograd(input$town,input$alpha,input$lambda,input$beta)
+    data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta)]] = data
+    saveRDS(data_l,paste0(input$town,'.rdata'))
+     }
+   }else if(input$func == '羅吉斯函數'){
+    data_l = readRDS(paste0(input$town,'.rdata'))
+    data = data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]]
+    if (is.null(data)){
+    data = utility_logistic(input$town,input$alpha,input$lambda,input$beta,input$omega)
+    data_l[[paste0(input$func,',',input$alpha,',',input$lambda,',',input$beta,',',input$omega)]] = data
+    saveRDS(data_l,paste0(input$town,'.rdata'))
+    }
+   }
+  cells = data[[1]]
+  facilities = data[[2]]
+  tm_shape(cells)+tm_polygons('人口',alpha = 0.5,palette = "RdYlGn", midpoint = 0)+tm_shape(facilities)+tm_dots('O_ABC',size='resource')+tm_layout(asp=0)
 })
+
+##saveRDS(list(),'鹽埕區.rdata')
 ```
-</div>
-
-</div>
-
-
-
 
 
