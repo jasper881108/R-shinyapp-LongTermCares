@@ -13,8 +13,8 @@
 <br>
 
 # Structure
-### Backend - Django
-### interactive app - shiny
+### Backend             -     Django
+### interactive app     -     Shiny
 
 # Why Long-Term Cares
 ### This side project is prepared for 
