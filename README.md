@@ -3,7 +3,7 @@
 
 # R-shinyapp-LongTermCares
 ### We want to know how local Lonterm Cares sites contribute to every minimal-dministrative-area. 
-### By computing some hypothesis function which considering factors below 
+### By computing some hypothesis functions considering factors below 
 ### 1.Distance
 ### 2.Capped Diminishing
 ### 3.Decaded utility
