@@ -29,6 +29,10 @@
 <br>
 <br>
 <br>
+<br>
+<br>
+<br>
+<br>
 
 # Optimize method - Using nloptr packages
 ### Third party pacakages to enforce non-linearaity optimize method.
@@ -40,7 +44,23 @@
 
 ![nonli_optimize method](/images/nonlinear_normal.png)
 ![nonli_optimize params](/images/nonlinear_logistic.png)
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
 # Optimize method - Adam with regulization
 ### By simply compute gradient and adding constraint we can still perform linear optimize.
+
+<br>
+<br>
+<br>
+<br>
+
 ![li_optimize method](/images/linear_loss_grad.png)
 ![li_optimize params](/images/linear_optimizer.png)
