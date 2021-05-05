@@ -2,15 +2,23 @@
 
 
 # R-shinyapp-LongTermCares
+
 <br>
+<br>
+
 # Why Long-Term Cares
 ### This side project is prepared for 
 [2021資料創新應用競賽](https://opendata-contest.tca.org.tw)
+
+<br>
+<br>
 <br>
 <br>
 
 # Product demo
 ![Product](https://user-images.githubusercontent.com/67900956/117104847-6d537480-adaf-11eb-8e79-be2ff9f374d8.mp4)
+<br>
+<br>
 <br>
 <br>
 
@@ -19,10 +27,14 @@
 
 <br>
 <br>
+<br>
+<br>
 
 # Optimize method - Using nloptr packages
 ### Third party pacakages to enforce non-linearaity optimize method.
 
+<br>
+<br>
 <br>
 <br>
 
