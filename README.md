@@ -18,5 +18,5 @@ Third party pacakages to enforce non-linearaity optimize method.
 
 ## Optimize method - Adam with regulization
 By simply compute gradient and adding constraint we can still perform linear optimize.
-![optimize method](/images/optimize_method.png)
-![optimize params](/images/optimize_parameter.png)
+![optimize method](/images/linear_loss_grad.png)
+![optimize params](/images/linear_optimizer.png)
