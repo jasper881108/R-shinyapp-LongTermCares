@@ -12,6 +12,10 @@
 <br>
 <br>
 
+# Structure
+### Backend - Django
+### interactive app - shiny
+
 # Why Long-Term Cares
 ### This side project is prepared for 
 [2021資料創新應用競賽](https://opendata-contest.tca.org.tw)
