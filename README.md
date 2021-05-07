@@ -46,7 +46,7 @@
 <br>
 <br>
 
-### Video
+### App Video
 ![Product](https://user-images.githubusercontent.com/67900956/117104847-6d537480-adaf-11eb-8e79-be2ff9f374d8.mp4)
 <br>
 <br>
