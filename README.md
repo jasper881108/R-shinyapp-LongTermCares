@@ -65,7 +65,7 @@
 <br>
 
 # Optimize method - Adam with regulization
-### By simply compute gradient and adding constraint we can still perform linear optimize.
+### By simply computing gradient and adding constraint we can still perform linear optimize.
 
 <br>
 <br>
