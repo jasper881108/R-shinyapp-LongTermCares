@@ -1,61 +1,42 @@
-/*
- * Navigataur: A pure CSS responsive navigation menu
- * Author: Mike King (@micjamking)
- */
-
-/*
- 	Notes:
-
- 	- Media queries should be edited in both style sections if you require
-	  a different breakpoint for your navigation.
-
-	- Toggle class & menu anchor tags in list items have box-sizing: border-box
-	  style property to allow padding inside the container without conflicting with layout.
-*/
-
-
-/*--------------------------------
- Functional Styles (Required)
----------------------------------*/
-
 .header { position: relative; }
 #toggle, .toggle { display: none; }
-.menu > li { list-style: none; float:left;width:100%}
-.menu-right > li{list-style: none; float:left;}
-
-.nav-box-left{
-	height: 10%;
-
+.menu > li { list-style: none; float:left;width:50%;}
+.menu-right > li{list-style: none; float:right;width:100%;}
+.menu{
 	float: left;
-}
-.nav-box-right{
-	float: right;
 	width:20%;
 }
-.nav-box-right-button{
-	position: relative;
-	display: block;
-	height:30px;
-	width:30px;
-	float: right;
-	margin: 10px;
-	padding :20px;
-	overflow:hidden;
-}
-
 .menu-right{
 	position:absolute;
-	top:20px;
-	right:0%;
-	float: right;
+	width: 100%;
+	top:0%;
+	right: 5%;
 	display: none;
+	height: 20%;
 	background-color: rgba(256,256,256,0.5);
 }
+.nav-box-right{
+	position: absolute;
+	top: 0;
+	right:0;
+	width:30%;
+}
+.nav-box-right-button{
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	height:30px;
+	width:30px;
+	margin: 10px;
+	padding :20px;
+}
+
 
 .nav-box-right:hover .menu-right {
+	font-size: 20px;
 	display: inline-block;
 	text-align: right;
-	width : 8%;
+	width : 20%;
 	height: inherit;
 	animation-name: changeDisplay;
 	animation-duration: 1s ;
@@ -72,7 +53,7 @@
 
 @keyframes changeDisplay {
 	0%{
-		height:20%;
+		height:10%;
 		opacity: 0;
 		visibility: hidden;
 	}
@@ -85,14 +66,9 @@
 @keyframes fadeaway {
 	0%{
 		transform: translateX(0px) translateY(0px) rotate(90deg);
-		height:30px;
-		width: 30px;
 	}
 	100% {
-		transform: translateX(40px) translateY(-1px) ;
-
-		height: 0;
-		width: 0;
+		transform: translateX(60px) translateY(-1px)
 
 	}
 
@@ -100,7 +76,7 @@
 
 
 .menu > li > a{
-	display: block;
+	display: inline-block;
 	margin-top: 10px;
 	padding :10px;
 	text-decoration: none;
@@ -118,7 +94,6 @@
 
 .menu-right > li > a{
 	display: block;
-
 	margin-top: 10px;
 	padding :10px;
 	text-decoration: none;
